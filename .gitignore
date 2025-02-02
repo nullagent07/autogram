@@ -1,0 +1,105 @@
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Ignore sensitive environment files
+.env
+*.env.*
+
+# Ignore virtual environment directories
+.venv/
+env/
+venv/
+
+# Ignore log files
+*.log
+automation.log
+
+# Ignore output directories
+output/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE/editor specific files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Ignore compiled Python files
+*.so
+*.dll
+*.dylib
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore coverage reports
+htmlcov/
+.coverage
+.tox/
+.nox/
+.cache/
+
+# Ignore test and build directories
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Ignore temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+
+# Ignore virtual machine files
+*.vdi
+*.vbox
+*.vbox-prev
+*.vmwarevm/
+*.vagrant/
+
+# Ignore database files
+*.sqlite3
+*.db
+
+# Ignore archive files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# Ignore backup and old files
+*.bak
+*.old
+*.backup
+*.orig
+*.rej
+
+# Ignore Sublime Text files
+*.sublime-workspace
+*.sublime-project
+*.sublime-settings
+*.sublime-metadata
+*.sublime-package
+*.sublime-snippet
+*.sublime-completions
+*.sublime-keymap
+*.sublime-mousemap
+*.sublime-menu
+*.sublime-theme
+output/
+agent.log
+automation.log
+agent_memory.json

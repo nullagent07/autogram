@@ -1,0 +1,6 @@
+instagrapi
+feedparser
+pillow
+requests
+diffusers
+torch

@@ -1,0 +1,11 @@
+{
+  "name": "AutoGram",
+  "post_frequency": 3,
+  "max_news_age": 24,
+  "output_dir": "./output",
+  "brand_theme": {
+    "primary_color": "#FF6B6B",
+    "secondary_color": "#4ECDC4",
+    "font_style": "modern"
+  }
+}
