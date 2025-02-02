@@ -1,8 +1,7 @@
 """
-AI News Agent
 An autonomous agent for AI news curation and social media management.
 
-Author: [Your Name]
+Author: ranahaani
 Version: 2.0.0
 """
 
@@ -22,6 +21,8 @@ from dotenv import load_dotenv
 from gnews import GNews
 from instagrapi import Client
 from pydantic import BaseModel
+from io import BytesIO
+from PIL import Image
 
 load_dotenv()
 
@@ -89,14 +90,59 @@ class AgentConfig(BaseModel):
     credentials: Dict[str, str] = {}
 
 
+class BrandTheme(BaseModel):
+    logo_url: Optional[str] = None
+    primary_color: str = "#000000"
+    secondary_color: str = "#FFFFFF"
+    background_color: str = "#F0F0F0"
+    text_color: str = "#333333"
+    font_style: str = "Arial"
+
+
+class BrandManager:
+    """Manages brand assets and theme"""
+
+    def __init__(self, theme: BrandTheme):
+        self.theme = theme
+        self.logo: Optional[Image.Image] = self._load_logo()
+        self.logger = logging.getLogger(__name__)
+
+    def _load_logo(self) -> Optional[Image.Image]:
+        """Load brand logo from URL"""
+        if not self.theme.logo_url:
+            return None
+
+        try:
+            response = requests.get(self.theme.logo_url, timeout=10)
+            response.raise_for_status()
+            return Image.open(BytesIO(response.content)).convert("RGBA")
+        except Exception as e:
+            self.logger.warning(f"Failed to load logo: {e}")
+            return None
+
+    @property
+    def theme_prompt(self) -> str:
+        """Generate theme-specific prompt for image generation"""
+        return (
+            f"Use brand colors: Primary {self.theme.primary_color}, "
+            f"Secondary {self.theme.secondary_color}. "
+            f"Background: {self.theme.background_color}. "
+            f"Text color: {self.theme.text_color}. "
+            f"Font: {self.theme.font_style}. "
+            "Create a high-tech, minimalist design with subtle futuristic elements "
+            "using smooth gradients for a modern aesthetic."
+        )
+
+
 class AINewsAgent:
 
-    def __init__(self, config: AgentConfig):
+    def __init__(self, config: AgentConfig, theme: BrandTheme):
         self.config = config
         self._state = AgentState.IDLE
         self.memory = AgentMemory.load(config.memory_path)
         self.metrics = AgentMetrics()
         self.logger = self._setup_logging()
+        self.brand_manager = BrandManager(theme)
 
         self._init_ai_components()
 
@@ -339,7 +385,7 @@ class AINewsAgent:
                 }
             )
 
-            image_path =  f"output/{text[:50].replace(' ', '_')}.png"
+            image_path = f"output/{text[:50].replace(' ', '_')}.jpg"
             async with aiohttp.ClientSession() as session:
                 async with session.get(output.url) as response:
                     image_data = await response.read()
@@ -360,18 +406,18 @@ class AINewsAgent:
             prompt = (
                 f"Convert this news title into an engaging visual prompt:\n{text}\n"
                 f"Make it suitable for a professional tech-focused social media post."
+                f"Don't add any other text or hashtags to the prompt. Only return the title.\n"
+
             )
 
             response = await asyncio.to_thread(
                 self.content_analyzer.generate_content,
                 prompt
             )
-
-            return response.text.strip()
-
+            return f"{response.text.strip()} {self.brand_manager.theme_prompt}"
         except Exception as e:
             self.logger.error(f"Prompt enhancement failed: {e}")
-            return f"Modern tech visualization: {text}"
+            return f"Modern tech visualization: {text} {self.brand_manager.theme_prompt}"
 
     async def _generate_hashtags(self) -> List[str]:
         """Generate relevant hashtags"""
@@ -408,13 +454,13 @@ class AINewsAgent:
         caption = content.get("caption", "")
 
         # Validate images
-        valid_images = []
+        valid_images: List[str] = []
         for img in images:
             path = Path(img)
             if not path.exists():
                 self.logger.error(f"Missing image: {img}")
                 continue
-            valid_images.append(str(path.resolve()))
+            valid_images.append(path)
 
         if not valid_images:
             self.logger.error("No valid images to post")
