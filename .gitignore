@@ -5,7 +5,7 @@ __pycache__/
 
 # Ignore sensitive environment files
 .env
-*.env.*
+*.env.
 
 # Ignore virtual environment directories
 .venv/
