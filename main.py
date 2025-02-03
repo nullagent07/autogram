@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from core.agent import AINewsAgent, AgentConfig
-from core.agent import BrandTheme 
+from core.agent import BrandTheme
 
 
 def load_agent_config(config_path: str = "agent_config.json") -> AgentConfig:
@@ -48,11 +48,18 @@ def load_agent_config(config_path: str = "agent_config.json") -> AgentConfig:
 async def main():
     config = load_agent_config()
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create a theme for the agent
-    theme = BrandTheme()
-    
-    agent = AINewsAgent(config, theme) 
+
+    theme = BrandTheme(
+        primary_color="#2A5CAA",
+        secondary_color="#1A1A1A",
+        accent_color="#00FF88",
+        background_color="#0F0F0F",
+        text_color="#FFFFFF",
+        font_style="Roboto",
+        visual_style="cyberpunk",
+    )
+
+    agent = AINewsAgent(config, theme)
     try:
         await agent.run()
     except KeyboardInterrupt:

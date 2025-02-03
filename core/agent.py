@@ -8,6 +8,7 @@ Version: 2.0.0
 import asyncio
 import json
 import logging
+import random
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from enum import Enum
@@ -23,6 +24,7 @@ from instagrapi import Client
 from pydantic import BaseModel
 from io import BytesIO
 from PIL import Image
+import re
 
 load_dotenv()
 
@@ -95,8 +97,11 @@ class BrandTheme(BaseModel):
     primary_color: str = "#000000"
     secondary_color: str = "#FFFFFF"
     background_color: str = "#F0F0F0"
+    accent_color: str = "#F0F0F0"
     text_color: str = "#333333"
     font_style: str = "Arial"
+    visual_style: str = "futuristic"
+    content_tone: str = "informative"
 
 
 class BrandManager:
@@ -106,6 +111,31 @@ class BrandManager:
         self.theme = theme
         self.logo: Optional[Image.Image] = self._load_logo()
         self.logger = logging.getLogger(__name__)
+        self.style_guide = {
+            "tech_motifs": [
+                "neural networks", "quantum computing", "robotics",
+                "data streams", "circuit boards", "holograms"
+            ],
+            "composition_rules": [
+                "Rule of thirds layout",
+                "Negative space for text placement",
+                "Dynamic lighting effects"
+            ]
+        }
+
+    @property
+    def theme_prompt(self) -> str:
+        """Generate detailed theme prompt for image generation"""
+        return (
+            f"Brand Style Guide: "
+            f"Color Palette: Primary {self.theme.primary_color}, "
+            f"Secondary {self.theme.secondary_color}, Accent {self.theme.accent_color}. "
+            f"Font: {self.theme.font_style} in {self.theme.text_color}. "
+            f"Visual Style: {self.theme.visual_style} with {self.style_guide['composition_rules'][0]}. "
+            f"Incorporate subtle elements of {random.choice(self.style_guide['tech_motifs'])}. "
+            f"Text must be clearly readable with contrast against background. "
+            f"Use modern UI elements and professional tech visualization techniques."
+        )
 
     def _load_logo(self) -> Optional[Image.Image]:
         """Load brand logo from URL"""
@@ -120,19 +150,6 @@ class BrandManager:
             self.logger.warning(f"Failed to load logo: {e}")
             return None
 
-    @property
-    def theme_prompt(self) -> str:
-        """Generate theme-specific prompt for image generation"""
-        return (
-            f"Use brand colors: Primary {self.theme.primary_color}, "
-            f"Secondary {self.theme.secondary_color}. "
-            f"Background: {self.theme.background_color}. "
-            f"Text color: {self.theme.text_color}. "
-            f"Font: {self.theme.font_style}. "
-            "Create a high-tech, minimalist design with subtle futuristic elements "
-            "using smooth gradients for a modern aesthetic."
-        )
-
 
 class AINewsAgent:
 
@@ -143,6 +160,10 @@ class AINewsAgent:
         self.metrics = AgentMetrics()
         self.logger = self._setup_logging()
         self.brand_manager = BrandManager(theme)
+        self._prompt_cache = {}  # Cache for enhanced prompts
+
+        # Ensure the output directory exists
+        self.config.output_dir.mkdir(parents=True, exist_ok=True)
 
         self._init_ai_components()
 
@@ -308,72 +329,148 @@ class AINewsAgent:
             return []
 
     async def _analyze_news(self, news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if not self.content_analyzer:
-            return news_items[:3]  # Default selection if no AI available
+        """AI-powered news analysis with engagement prediction.
+        If the response is not valid JSON (e.g., wrapped in Markdown formatting), re-prompt the AI to provide only JSON."""
+        base_prompt = (
+            f"Analyze these AI news titles for social media potential:\n"
+            f"{chr(10).join([item['title'] for item in news_items])}\n\n"
+            f"Score each 1-10 based on:\n"
+            f"1. Technical significance\n"
+            f"2. Audience interest\n"
+            f"3. Visual potential\n"
+            f"4. Uniqueness\n"
+            f"5. Discussion potential\n"
+            f"Return JSON with scores and selection reason. "
+            f"ONLY return valid JSON with no extra commentary."
+        )
 
+        max_attempts = 2
+        attempt = 0
+        analysis = None
+
+        while attempt < max_attempts:
+            try:
+                response = await asyncio.to_thread(
+                    self.content_analyzer.generate_content,
+                    base_prompt
+                )
+                # Log the raw response for debugging
+                self.logger.debug(f"Content analyzer response (attempt {attempt +1}): {response.text}")
+
+                raw_response = response.text.strip()
+                # Check if the response is wrapped in markdown code fences (e.g., ```json ... ```)
+                if raw_response.startswith("```"):
+                    lines = raw_response.splitlines()
+                    # Remove the first line if it starts with triple backticks (and possibly a language marker)
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    # Remove the last line if it is the closing triple backticks
+                    if lines and lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                    raw_response = "\n".join(lines).strip()
+
+                analysis = json.loads(raw_response)
+                break  # Successfully parsed JSON, exit loop
+            except Exception as e:
+                self.logger.warning(
+                    f"Attempt {attempt + 1}: Failed to parse JSON response: {e}. "
+                    f"Re-prompting AI for valid JSON."
+                )
+                # Append an extra instruction to the prompt to force a JSON-only response
+                base_prompt += "\n\nIMPORTANT: Return ONLY valid JSON with no additional text."
+                attempt += 1
+
+        if analysis is None:
+            self.logger.error("Advanced news analysis failed after multiple attempts.")
+            return news_items[:3]  # Fallback: simply use the first 3 news items
+
+        # Assuming the returned JSON has a "titles" key that is a list of objects containing scores and reasons
+        scores = analysis.get("titles", [])
+        sorted_items = sorted(
+            zip(news_items, scores),
+            key=lambda x: sum([x[1].get(key, 0) for key in [
+                "technical_significance", "audience_interest", 
+                "visual_potential", "uniqueness", "discussion_potential"
+            ]]),
+            reverse=True
+        )[:3]
+
+        return [item[0] for item in sorted_items]
+    async def _generate_caption(self, news_items: List[Dict[str, Any]]) -> str:
+        """Generate engaging social media caption"""
         try:
-            # Prepare news for analysis
-            titles = [item['title'] for item in news_items]
-            titles_str = "\n".join(titles)
+            caption_template = (
+                "🚀 {hook}\n\n"
+                "🔍 Key Highlights:\n"
+                "{bullets}\n\n"
+                "💡 Why This Matters:\n"
+                "{analysis}\n\n"
+                "{hashtags}"
+            )
 
-            prompt = (
-                f"Analyze these AI news titles and select the top 3 most important "
-                f"and engaging ones for social media. Consider:\n"
-                f"1. News importance and impact\n"
-                f"2. Social media engagement potential\n"
-                f"3. Current AI trends and interests\n\n"
-                f"Titles:\n{titles_str}\n\n"
-                f"Return only the selected titles, one per line."
+            news_text = "\n".join([item['title'] for item in news_items])
+
+            analysis_prompt = (
+                f"Generate social media caption for these AI news stories:\n{news_text}\n"
+                f"Format:\n"
+                f"- 1 emoji + attention-grabbing hook (max 12 words)\n"
+                f"- 3 bullet points with key technical details\n"
+                f"- Short 'Why This Matters' analysis (50-70 words)\n"
+                f"Tone: {self.brand_manager.theme.content_tone}"
             )
 
             response = await asyncio.to_thread(
                 self.content_analyzer.generate_content,
-                prompt
+                analysis_prompt
             )
 
-            selected_titles = response.text.strip().split("\n")
-            return [
-                item for item in news_items
-                if item['title'] in selected_titles
-            ]
+            structured_text = response.text.strip().split("\n\n")
 
+            return caption_template.format(
+                hook=structured_text[0],
+                bullets="\n".join([f"• {line}" for line in structured_text[1].split("\n")]),
+                analysis=structured_text[2],
+                hashtags=" ".join(await self._generate_hashtags(news_items))
+            )
         except Exception as e:
-            self.logger.error(f"News analysis failed: {e}")
-            return news_items[:3]
+            self.logger.error(f"Caption generation failed: {e}")
+            return "\n".join([item['title'] for item in news_items])
 
     async def _generate_content(self, news_items: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Generate content for posting"""
+        """Generate content for posting with concurrent image generation and caption/hashtag generation"""
         try:
+            async with aiohttp.ClientSession() as session:
+                image_tasks = [self._generate_image(item['title'], session=session) for item in news_items]
+                caption_task = self._generate_caption(news_items)
+                hashtags_task = self._generate_hashtags(news_items)
+                images, caption, hashtags = await asyncio.gather(
+                    asyncio.gather(*image_tasks),
+                    caption_task,
+                    hashtags_task
+                )
+            # Filter out any None images
+            valid_images = [img for img in images if img]
             content = {
-                "images": [],
-                "caption": "",
-                "hashtags": []
+                "images": valid_images,
+                "caption": caption + "\n" + " ".join(hashtags),
+                "hashtags": hashtags
             }
-
-            for item in news_items:
-                image = await self._generate_image(item['title'])
-                if image:
-                    content["images"].append(image)
-                content["caption"] += f"{item['title']}\n\n"
-
-            content["hashtags"] = await self._generate_hashtags()
-
-            content["caption"] += "\n" + " ".join(content["hashtags"])
-
             return content
 
         except Exception as e:
             self.logger.error(f"Content generation failed: {e}")
             return None
 
-    async def _generate_image(self, text: str) -> Optional[Path]:
+    async def _generate_image(self, text: str, session: Optional[aiohttp.ClientSession] = None) -> Optional[Path]:
+        """Generate an image for the given news title using an enhanced prompt and a shared HTTP session"""
         if not self.image_generator:
             return None
-
+        own_session = False
+        if session is None:
+            session = aiohttp.ClientSession()
+            own_session = True
         try:
-            # Enhanced prompt for better image generation
             prompt = await self._enhance_prompt(text)
-
             output = await asyncio.to_thread(
                 self.image_generator.run,
                 "ideogram-ai/ideogram-v2",
@@ -384,53 +481,74 @@ class AINewsAgent:
                     "height": 1024,
                 }
             )
-
-            image_path = f"output/{text[:50].replace(' ', '_')}.jpg"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(output.url) as response:
-                    image_data = await response.read()
-                    Path(image_path).write_bytes(image_data)
-
+            async with session.get(output.url) as response:
+                image_data = await response.read()
+            filename = self._sanitize_filename(text)[:50] + ".jpg"
+            image_path = self.config.output_dir / filename
+            image_path.write_bytes(image_data)
+            self.logger.info(f"Image generated and saved to {image_path}")
             return image_path
 
         except Exception as e:
-            self.logger.error(f"Image generation failed: {e}")
+            self.logger.error(f"Image generation failed for '{text}': {e}")
             return None
 
+        finally:
+            if own_session:
+                await session.close()
+
     async def _enhance_prompt(self, text: str) -> str:
-        """Enhance text prompt for better image generation"""
-        if not self.content_analyzer:
-            return f"Professional tech visualization about: {text}"
-
+        """Generate optimized prompt for text-in-image generation with caching for efficiency"""
+        if text in self._prompt_cache:
+            return self._prompt_cache[text]
         try:
-            prompt = (
-                f"Convert this news title into an engaging visual prompt:\n{text}\n"
-                f"Make it suitable for a professional tech-focused social media post."
-                f"Don't add any other text or hashtags to the prompt. Only return the title.\n"
-
+            analysis_prompt = (
+                f"Analyze this AI news title and create a visual prompt for social media:\n"
+                f"Title: {text}\n"
+                f"Consider:\n"
+                f"1. Key technical concepts in the title\n"
+                f"2. Trending visual styles in tech (2025)\n"
+                f"3. Brand colors and typography\n"
+                f"4. Text placement for maximum readability\n\n"
+                f"Return ONLY the visual description without any explanations."
             )
 
             response = await asyncio.to_thread(
                 self.content_analyzer.generate_content,
-                prompt
+                analysis_prompt
             )
-            return f"{response.text.strip()} {self.brand_manager.theme_prompt}"
+
+            visual_description = response.text.strip()
+
+            enhanced_prompt = (
+                f"{visual_description} {self.brand_manager.theme_prompt} "
+                f"Text overlay requirements: "
+                f"- Exact title text: '{text}' "
+                f"- Font size: 48-60pt for main text "
+                f"- Position: Lower third with gradient backdrop "
+                f"- Effects: Subtle drop shadow and outer glow "
+                f"- Aspect ratio: 1:1 for social media "
+                f"- Style: {self.brand_manager.theme.visual_style} "
+                f"- Technical accuracy: High"
+            )
+            self._prompt_cache[text] = enhanced_prompt
+            return enhanced_prompt
+
         except Exception as e:
-            self.logger.error(f"Prompt enhancement failed: {e}")
-            return f"Modern tech visualization: {text} {self.brand_manager.theme_prompt}"
+            self.logger.error(f"Prompt enhancement failed for '{text}': {e}")
+            fallback = f"Professional tech infographic style: {text} {self.brand_manager.theme_prompt}"
+            self._prompt_cache[text] = fallback
+            return fallback
 
-    async def _generate_hashtags(self) -> List[str]:
-        """Generate relevant hashtags"""
-        default_tags = ["#AI", "#ArtificialIntelligence", "#Tech", "#Innovation"]
-
-        if not self.content_analyzer:
-            return default_tags
-
+    async def _generate_hashtags(self, news_items: List[Dict[str, Any]]) -> List[str]:
+        """Generate context-aware hashtags"""
         try:
+            news_context = "\n".join([item['title'] for item in news_items])
+
             prompt = (
-                "Generate 8 relevant hashtags for an AI news post. "
-                "Include trending tech hashtags. Return only the hashtags, "
-                "one per line, without numbers or explanations."
+                f"Generate 8-10 relevant hashtags for these AI news stories:\n{news_context}\n"
+                f"Mix of:\n- General tech trends\n- Specific technologies mentioned\n- Industry applications\n"
+                f"Prioritize hashtags with 10k-1M posts\nReturn only hashtags separated by commas"
             )
 
             response = await asyncio.to_thread(
@@ -438,12 +556,10 @@ class AINewsAgent:
                 prompt
             )
 
-            hashtags = response.text.strip().split("\n")
-            return [tag if tag.startswith("#") else f"#{tag}" for tag in hashtags]
-
+            return [tag.strip() for tag in response.text.split(",") if tag.strip()]
         except Exception as e:
             self.logger.error(f"Hashtag generation failed: {e}")
-            return default_tags
+            return ["#AI", "#TechNews", "#Innovation", "#FutureTech"]
 
     async def _post_content(self, content: Dict[str, Any]) -> bool:
         if not self.instagram:
@@ -500,3 +616,11 @@ class AINewsAgent:
         seconds_per_day = 86400
         delay = seconds_per_day / self.config.post_frequency
         return int(delay)
+
+    @staticmethod
+    def _sanitize_filename(text: str) -> str:
+        """Sanitize the text to create a filesystem-safe filename."""
+        # Remove any character that is not alphanumeric, underscore, or dash
+        text = re.sub(r'[^\w\s-]', '', text)
+        text = re.sub(r'\s+', '_', text)
+        return text
