@@ -160,11 +160,6 @@ AutoGram includes robust error handling:
 
 Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
-## 📫 Support
-
-- 📧 Email: support@autogram.ai
-- 💬 Discord: [AutoGram Community](https://discord.gg/autogram)
-- 📚 Documentation: [docs.autogram.ai](https://docs.autogram.ai)
 
 ## 📜 License
 
