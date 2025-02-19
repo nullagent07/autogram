@@ -396,27 +396,53 @@ class AINewsAgent:
         )[:3]
 
         return [item[0] for item in sorted_items]
+
     async def _generate_caption(self, news_items: List[Dict[str, Any]]) -> str:
         """Generate engaging social media caption"""
         try:
             caption_template = (
-                "🚀 {hook}\n\n"
-                "🔍 Key Highlights:\n"
+                "{hook}\n\n"
+                "🎯 Суть новости:\n"
+                "{summary}\n\n"
+                "🔍 Технические детали:\n"
                 "{bullets}\n\n"
-                "💡 Why This Matters:\n"
+                "💡 Почему это важно:\n"
                 "{analysis}\n\n"
+                "🌐 Что дальше:\n"
+                "{impact}\n\n"
                 "{hashtags}"
             )
 
             news_text = "\n".join([item['title'] for item in news_items])
 
             analysis_prompt = (
-                f"Generate social media caption for these AI news stories:\n{news_text}\n"
-                f"Format:\n"
-                f"- 1 emoji + attention-grabbing hook (max 12 words)\n"
-                f"- 3 bullet points with key technical details\n"
-                f"- Short 'Why This Matters' analysis (50-70 words)\n"
-                f"Tone: {self.brand_manager.theme.content_tone}"
+                f"Ты - профессиональный редактор технологического издания. "
+                f"Напиши качественный пост для Instagram о технологических новостях, основываясь на этом:\n\n{news_text}\n\n"
+                f"Структура поста:\n\n"
+                f"1. Заголовок:\n"
+                f"- Начни с эмодзи (🚀/💡/🔬/🤖)\n"
+                f"- Напиши краткий, интригующий заголовок\n"
+                f"- Без звездочек и технических терминов\n\n"
+                f"2. Суть новости (2-3 предложения):\n"
+                f"- Простым языком объясни главное\n"
+                f"- Избегай технического жаргона\n"
+                f"- Сделай акцент на практической пользе\n\n"
+                f"3. Технические детали (3 пункта):\n"
+                f"- Конкретные факты и цифры\n"
+                f"- Понятные сравнения\n"
+                f"- Каждый пункт начинай с '•'\n\n"
+                f"4. Значимость (2-3 предложения):\n"
+                f"- Объясни влияние на обычную жизнь\n"
+                f"- Приведи понятные примеры применения\n\n"
+                f"5. Перспективы (1-2 предложения):\n"
+                f"- Опиши ближайшее будущее технологии\n"
+                f"- Заверши на позитивной ноте\n\n"
+                f"Важно:\n"
+                f"- Пиши живым языком\n"
+                f"- Никаких звездочек и специальных символов\n"
+                f"- Избегай канцеляризмов и штампов\n"
+                f"- Используй короткие предложения\n"
+                f"- Добавляй эмоциональность, но сохраняй экспертность"
             )
 
             response = await asyncio.to_thread(
@@ -428,8 +454,10 @@ class AINewsAgent:
 
             return caption_template.format(
                 hook=structured_text[0],
-                bullets="\n".join([f"• {line}" for line in structured_text[1].split("\n")]),
-                analysis=structured_text[2],
+                summary=structured_text[1],
+                bullets=structured_text[2],
+                analysis=structured_text[3],
+                impact=structured_text[4],
                 hashtags=" ".join(await self._generate_hashtags(news_items))
             )
         except Exception as e:
@@ -503,14 +531,14 @@ class AINewsAgent:
             return self._prompt_cache[text]
         try:
             analysis_prompt = (
-                f"Analyze this AI news title and create a visual prompt for social media:\n"
-                f"Title: {text}\n"
-                f"Consider:\n"
-                f"1. Key technical concepts in the title\n"
-                f"2. Trending visual styles in tech (2025)\n"
-                f"3. Brand colors and typography\n"
-                f"4. Text placement for maximum readability\n\n"
-                f"Return ONLY the visual description without any explanations."
+                f"Проанализируй эту новость об ИИ и создай описание для генерации изображения:\n"
+                f"Новость: {text}\n"
+                f"Учитывай:\n"
+                f"1. Ключевые технические концепции\n"
+                f"2. Актуальные визуальные стили в технологиях (2025)\n"
+                f"3. Фирменные цвета и типографику\n"
+                f"4. Размещение текста для максимальной читаемости\n\n"
+                f"Верни ТОЛЬКО визуальное описание без пояснений."
             )
 
             response = await asyncio.to_thread(
@@ -522,21 +550,21 @@ class AINewsAgent:
 
             enhanced_prompt = (
                 f"{visual_description} {self.brand_manager.theme_prompt} "
-                f"Text overlay requirements: "
-                f"- Exact title text: '{text}' "
-                f"- Font size: 48-60pt for main text "
-                f"- Position: Lower third with gradient backdrop "
-                f"- Effects: Subtle drop shadow and outer glow "
-                f"- Aspect ratio: 1:1 for social media "
-                f"- Style: {self.brand_manager.theme.visual_style} "
-                f"- Technical accuracy: High"
+                f"Требования к тексту: "
+                f"- Точный текст заголовка: '{text}' "
+                f"- Размер шрифта: 48-60pt для основного текста "
+                f"- Позиция: Нижняя треть с градиентным фоном "
+                f"- Эффекты: Легкая тень и внешнее свечение "
+                f"- Пропорции: 1:1 для соцсетей "
+                f"- Стиль: {self.brand_manager.theme.visual_style} "
+                f"- Техническая точность: Высокая"
             )
             self._prompt_cache[text] = enhanced_prompt
             return enhanced_prompt
 
         except Exception as e:
             self.logger.error(f"Prompt enhancement failed for '{text}': {e}")
-            fallback = f"Professional tech infographic style: {text} {self.brand_manager.theme_prompt}"
+            fallback = f"Профессиональный технический инфографический стиль: {text} {self.brand_manager.theme_prompt}"
             self._prompt_cache[text] = fallback
             return fallback
 
@@ -546,9 +574,13 @@ class AINewsAgent:
             news_context = "\n".join([item['title'] for item in news_items])
 
             prompt = (
-                f"Generate 8-10 relevant hashtags for these AI news stories:\n{news_context}\n"
-                f"Mix of:\n- General tech trends\n- Specific technologies mentioned\n- Industry applications\n"
-                f"Prioritize hashtags with 10k-1M posts\nReturn only hashtags separated by commas"
+                f"Создай 8-10 релевантных хэштегов для этих новостей об ИИ:\n{news_context}\n"
+                f"Требования к хэштегам:\n"
+                f"- Общие тренды в технологиях\n"
+                f"- Конкретные упомянутые технологии\n"
+                f"- Применение в индустрии\n"
+                f"Приоритет хэштегам с 10к-1М постов\n"
+                f"Верни только хэштеги через запятую"
             )
 
             response = await asyncio.to_thread(
@@ -559,7 +591,7 @@ class AINewsAgent:
             return [tag.strip() for tag in response.text.split(",") if tag.strip()]
         except Exception as e:
             self.logger.error(f"Hashtag generation failed: {e}")
-            return ["#AI", "#TechNews", "#Innovation", "#FutureTech"]
+            return ["#ИИ", "#Технологии", "#Инновации", "#БудущееТехнологий"]
 
     async def _post_content(self, content: Dict[str, Any]) -> bool:
         if not self.instagram:
